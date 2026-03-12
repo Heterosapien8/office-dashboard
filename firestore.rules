@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────
+    function isAuth()       { return request.auth != null; }
+    function uid()          { return request.auth.uid; }
+    function userDoc()      { return get(/databases/$(database)/documents/users/$(uid())); }
+    function role()         { return userDoc().data.role; }
+    function isAdmin()      { return role() == 'superAdmin'; }
+    function isRO()         { return role() == 'regionalOfficer'; }
+    function isTeam()       { return role() == 'monitoringTeam'; }
+    function isIndustry()   { return role() == 'industryUser'; }
+    function userRoId()     { return userDoc().data.roId; }
+
+    // ── Users ────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read:  if isAuth() && (uid() == userId || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin() || uid() == userId;
+      allow delete: if isAdmin();
+    }
+
+    // ── Master Data (Super Admin write, all auth read) ───────────
+    match /regionalOffices/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+    match /industries/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+    match /monitoringLocations/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+    match /units/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+    match /prescribedLimits/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+    match /monitoringTeams/{id} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── Monitoring Reports ───────────────────────────────────────
+    match /airReadings/{id} {
+      allow read:  if isAuth() && (isAdmin() || isRO() || resource.data.roId == userRoId());
+      allow create: if isAuth() && (isAdmin() || isRO() || isTeam() || isIndustry());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /waterReadings/{id} {
+      allow read:  if isAuth() && (isAdmin() || isRO() || resource.data.roId == userRoId());
+      allow create: if isAuth() && (isAdmin() || isRO() || isTeam() || isIndustry());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /noiseReadings/{id} {
+      allow read:  if isAuth() && (isAdmin() || isRO() || resource.data.roId == userRoId());
+      allow create: if isAuth() && (isAdmin() || isRO() || isTeam() || isIndustry());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Violations (Cloud Functions write only) ──────────────────
+    match /violations/{id} {
+      allow read:  if isAuth() && (isAdmin() || (isRO() && resource.data.roId == userRoId()));
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ── Escalations ──────────────────────────────────────────────
+    match /escalations/{id} {
+      allow read:  if isAuth() && (isAdmin() || (isRO() && resource.data.roId == userRoId()));
+      allow update: if isAuth() && (isAdmin() || isRO());
+      allow create: if false; // Cloud Functions only
+      allow delete: if isAdmin();
+      match /timeline/{entryId} {
+        allow read:  if isAuth() && (isAdmin() || isRO());
+        allow write: if false; // Cloud Functions only
+      }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────
+    match /notifications/{id} {
+      allow read:  if isAuth() && (isAdmin() ||
+                     resource.data.recipientUid  == uid() ||
+                     resource.data.recipientRoId == userRoId());
+      allow update: if isAuth() && (isAdmin() ||
+                     resource.data.recipientUid  == uid() ||
+                     resource.data.recipientRoId == userRoId());
+      allow create: if false; // Cloud Functions only
+      allow delete: if isAdmin();
+    }
+
+    // ── Report Locks ──────────────────────────────────────────────
+    match /reportLocks/{id} {
+      allow read:  if isAuth();
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ── Forecasts ─────────────────────────────────────────────────
+    match /forecasts/{id} {
+      allow read:  if isAuth();
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ── Public Summary (no auth required) ────────────────────────
+    match /publicSummary/{id} {
+      allow read:  if true;  // Public — citizen portal
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ── Support Tickets ───────────────────────────────────────────
+    match /supportTickets/{id} {
+      allow read:  if isAuth() && (isAdmin() || resource.data.createdBy == uid());
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

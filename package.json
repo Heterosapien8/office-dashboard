@@ -1,0 +1,12 @@
+{
+  "name": "prithvinet-root",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0"
+  }
+}

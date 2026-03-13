@@ -27,6 +27,15 @@ function getFlag(val, param) {
   return 'OK'
 }
 
+function computeAverage(samples, key) {
+  const values = samples
+    .map((sample) => Number(sample[key]))
+    .filter((value) => Number.isFinite(value))
+
+  if (values.length === 0) return null
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2))
+}
+
 export default function NaturalWaterForm() {
   const { currentUser, roId, roName } = useAuth()
   const navigate = useNavigate()
@@ -67,7 +76,13 @@ export default function NaturalWaterForm() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.industryId) { setErrors({ industryId: 'Required' }); return }
+    const nextErrors = {}
+    if (!form.industryId) nextErrors.industryId = 'Required'
+    if (!form.locationId) nextErrors.locationId = 'Required'
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors)
+      return
+    }
 
     setSaving(true)
     try {
@@ -88,11 +103,22 @@ export default function NaturalWaterForm() {
         }
       })
 
+      const selectedLocation = locations.find((location) => location.id === form.locationId)
+      const summary = {
+        temperature: computeAverage(samplesWithFlags, 'temperature'),
+        pH: computeAverage(samplesWithFlags, 'pH'),
+        turbidity: computeAverage(samplesWithFlags, 'turbidity'),
+        conductivity: computeAverage(samplesWithFlags, 'conductivity'),
+        totalSolids: computeAverage(samplesWithFlags, 'totalSolids'),
+        BOD: computeAverage(samplesWithFlags, 'BOD'),
+      }
+
       await addDoc(collection(db, COLLECTIONS.WATER_READINGS), {
         roId, roName,
         industryId:          form.industryId,
         industryName:        form.industryName,
-        locationId:          form.locationId || null,
+        locationId:          form.locationId,
+        locationName:        selectedLocation?.name ?? '',
         waterType:           'natural',
         sampleCollectedFrom: form.sampleCollectedFrom,
         sampleDescription:   form.sampleDescription,
@@ -102,6 +128,11 @@ export default function NaturalWaterForm() {
         sampleCollectedBy:   form.sampleCollectedBy,
         sampleAnalyzedBy:    form.sampleAnalyzedBy,
         samples:             samplesWithFlags,
+        sampleCount:         samplesWithFlags.length,
+        summary,
+        pH:                  summary.pH,
+        BOD:                 summary.BOD,
+        COD:                 null,
         isViolation,
         violatedParameters:  violated,
         isSimulated:         false,
@@ -156,6 +187,15 @@ export default function NaturalWaterForm() {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Sample Collected From</label>
               <input value={form.sampleCollectedFrom} onChange={e => setField('sampleCollectedFrom', e.target.value)} className="input-base" placeholder="River / Lake / Borewell" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Monitoring Location <span className="text-red-500">*</span></label>
+              <select value={form.locationId} onChange={e => setField('locationId', e.target.value)} className={`input-base ${errors.locationId ? 'border-red-400' : ''}`}>
+                <option value="">-- Select Location --</option>
+                {locations.filter(location => location.type === 'water' || location.type === 'multi').map(location => (
+                  <option key={location.id} value={location.id}>{location.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Sample Description</label>

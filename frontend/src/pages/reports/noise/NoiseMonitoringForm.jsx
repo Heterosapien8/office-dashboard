@@ -8,11 +8,33 @@ import { ArrowLeft, PlusCircle, Trash2, Save } from 'lucide-react'
 
 const emptyRow = () => ({ locationName: '', zone: 'industrial', monitoringTime: 'Day', noiseLevel: '' })
 
+function summarizeNoiseRows(rows) {
+  const levels = rows
+    .map((row) => Number(row.noiseLevel))
+    .filter((value) => Number.isFinite(value))
+
+  if (levels.length === 0) {
+    return {
+      averageNoiseLevel: null,
+      peakNoiseLevel: null,
+    }
+  }
+
+  const averageNoiseLevel = Number((levels.reduce((sum, value) => sum + value, 0) / levels.length).toFixed(2))
+  const peakNoiseLevel = Math.max(...levels)
+
+  return {
+    averageNoiseLevel,
+    peakNoiseLevel,
+  }
+}
+
 export default function NoiseMonitoringForm() {
   const { currentUser, roId, roName } = useAuth()
   const navigate = useNavigate()
 
   const [industries,  setIndustries]  = useState([])
+  const [locations,   setLocations]   = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   const [saving,      setSaving]      = useState(false)
   const [errors,      setErrors]      = useState({})
@@ -20,6 +42,7 @@ export default function NoiseMonitoringForm() {
   const [form, setForm] = useState({
     roId, roName,
     industryId: '', industryName: '',
+    locationId: '', locationName: '',
     monitoringType: 'package',
     dateOfMonitoring: '', dateOfAnalysis: '',
     monitoredByName: '',
@@ -29,9 +52,11 @@ export default function NoiseMonitoringForm() {
   useEffect(() => {
     Promise.all([
       getDocs(query(collection(db, COLLECTIONS.INDUSTRIES),     orderBy('name'))),
+      getDocs(query(collection(db, COLLECTIONS.MONITORING_LOCATIONS), orderBy('name'))),
       getDocs(query(collection(db, COLLECTIONS.MONITORING_TEAMS), orderBy('name'))),
-    ]).then(([ind, team]) => {
+    ]).then(([ind, loc, team]) => {
       setIndustries(ind.docs.map(d  => ({ id: d.id, ...d.data() })))
+      setLocations(loc.docs.map(d => ({ id: d.id, ...d.data() })))
       setTeamMembers(team.docs.map(d => ({ id: d.id, ...d.data() })))
     })
   }, [])
@@ -50,23 +75,45 @@ export default function NoiseMonitoringForm() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.industryId) { setErrors({ industryId: 'Required' }); return }
+    const nextErrors = {}
+    if (!form.industryId) nextErrors.industryId = 'Required'
+    if (!form.locationId) nextErrors.locationId = 'Required'
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors)
+      return
+    }
 
     setSaving(true)
     try {
       const readingsWithFlags = rows.map(r => ({ ...r, flag: getFlag(r) ?? 'OK' }))
       const isViolation = readingsWithFlags.some(r => r.flag === 'H')
       const violatedReadings = readingsWithFlags.map((r, i) => r.flag === 'H' ? String(i) : null).filter(Boolean)
+      const summary = summarizeNoiseRows(readingsWithFlags)
+      const dominantRow = readingsWithFlags.reduce((current, row) => {
+        const currentLevel = Number(current?.noiseLevel)
+        const rowLevel = Number(row.noiseLevel)
+        if (!Number.isFinite(rowLevel)) return current
+        if (!Number.isFinite(currentLevel) || rowLevel > currentLevel) return row
+        return current
+      }, null)
 
       await addDoc(collection(db, COLLECTIONS.NOISE_READINGS), {
         roId, roName,
         industryId:      form.industryId,
         industryName:    form.industryName,
+        locationId:      form.locationId,
+        locationName:    form.locationName,
         monitoringType:  form.monitoringType,
         dateOfMonitoring: form.dateOfMonitoring ? new Date(form.dateOfMonitoring) : null,
         dateOfAnalysis:   form.dateOfAnalysis   ? new Date(form.dateOfAnalysis)   : null,
         monitoredByName: form.monitoredByName,
         readings:        readingsWithFlags,
+        readingCount:    readingsWithFlags.length,
+        averageNoiseLevel: summary.averageNoiseLevel,
+        noiseLevel:      summary.peakNoiseLevel,
+        peakNoiseLevel:  summary.peakNoiseLevel,
+        zone:            dominantRow?.zone ?? 'industrial',
+        monitoringTime:  dominantRow?.monitoringTime ?? 'Day',
         isViolation,
         violatedReadings,
         isSimulated:     false,
@@ -121,6 +168,20 @@ export default function NoiseMonitoringForm() {
               }} className={`input-base ${errors.industryId ? 'border-red-400' : ''}`}>
                 <option value="">-- Select --</option>
                 {industries.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Monitoring Location <span className="text-red-500">*</span></label>
+              <select value={form.locationId} onChange={e => {
+                const location = locations.find(item => item.id === e.target.value)
+                setField('locationId', e.target.value)
+                setField('locationName', location?.name ?? '')
+                setRows(current => current.map(row => ({ ...row, locationName: location?.name ?? row.locationName })))
+              }} className={`input-base ${errors.locationId ? 'border-red-400' : ''}`}>
+                <option value="">-- Select --</option>
+                {locations.filter(location => location.type === 'noise' || location.type === 'multi').map(location => (
+                  <option key={location.id} value={location.id}>{location.name}</option>
+                ))}
               </select>
             </div>
             <div>

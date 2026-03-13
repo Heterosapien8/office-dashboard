@@ -37,26 +37,56 @@ export default function ComplianceDashboard() {
   const totalCount      = industries.length
   const complianceRate  = totalCount > 0 ? Math.round((compliantCount / totalCount) * 100) : 0
   const openEscalations = escalations.filter(e => e.status !== 'RESOLVED').length
+  const pendingEscalations = escalations.filter(e => e.status === 'PENDING').length
+
+  const summaryCards = [
+    {
+      label: 'Open Violations',
+      value: openViolations,
+      meta: 'Immediate attention required',
+      icon: AlertTriangle,
+      shell: 'from-red-500 to-red-600',
+    },
+    {
+      label: 'Open Escalations',
+      value: openEscalations,
+      meta: `${pendingEscalations} still pending review`,
+      icon: Clock,
+      shell: 'from-orange-500 to-amber-500',
+    },
+    {
+      label: 'Compliant',
+      value: compliantCount,
+      meta: `${totalCount - compliantCount} require follow-up`,
+      icon: ShieldCheck,
+      shell: 'from-emerald-500 to-teal-600',
+    },
+    {
+      label: 'Compliance Rate',
+      value: `${complianceRate}%`,
+      meta: 'Across the current registry',
+      icon: TrendingUp,
+      shell: 'from-primary-600 to-primary-800',
+    },
+  ]
 
   return (
     <div className="space-y-6">
       <h1 className="page-title">Compliance Dashboard</h1>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: 'Open Violations',  value: openViolations,  icon: AlertTriangle, color: 'text-red-600',    bg: 'bg-red-50' },
-          { label: 'Open Escalations', value: openEscalations, icon: Clock,         color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'Compliant',        value: compliantCount,  icon: ShieldCheck,   color: 'text-green-600',  bg: 'bg-green-50' },
-          { label: 'Compliance Rate',  value: `${complianceRate}%`, icon: TrendingUp, color: 'text-primary-600', bg: 'bg-primary-50' },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className={`card border flex items-center gap-4`}>
-            <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-              <Icon size={20} className={color} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {summaryCards.map(({ label, value, meta, icon: Icon, shell }) => (
+          <div key={label} className={`rounded-[24px] bg-gradient-to-br ${shell} text-white p-5 shadow-sm min-h-[148px]`}>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] uppercase tracking-[0.28em] text-white/75">{label}</p>
+              <div className="rounded-2xl bg-white/15 p-2.5">
+                <Icon size={16} className="text-white" />
+              </div>
             </div>
-            <div>
-              <p className={`text-2xl font-bold ${color}`}>{value}</p>
-              <p className="text-xs text-gray-500">{label}</p>
+            <div className="mt-6">
+              <p className="text-4xl font-semibold leading-none">{value}</p>
+              <p className="text-xs text-white/75 mt-3">{meta}</p>
             </div>
           </div>
         ))}
